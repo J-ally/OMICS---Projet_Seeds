@@ -1,0 +1,125 @@
+---
+title: "First Analyses"
+author: "ALLYNDREE, MARCAIS, COUTROT"
+date: "2023-02-01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+library(FactoMineR)
+library(factoextra)
+library(tidyr)
+library(MultiVarSel)
+require(MultiVarSel)
+require(ggplot2)
+require(glmnet)
+```
+
+Etude de l'influence de la température (variable qualitative à 3 modalités : Low, Medium et Elevated) et du stade d'imbibition (variable qualitative à 3 modalités : DS (Dry seed), EI après 6h d’imbibition (Early imbibition) correspondant à la fin de la prise d’eau, LI après 20h d’imbibition (Late imbibition)) sur la capacité germinative des graines à l'aide de données de métabolomique pour des graines ayant subi un vieillissement artificiel de 4 jours (CD_4d).
+
+# Importation des données
+
+```{r}
+metabolome_all <- read.csv("C:/Users/joseph/Dropbox/Joseph/AgroParisTech/IODAAAAA/Stats en grande dimension/Projet_Seeds/Table_metabolome_CD_all.csv", header=T, sep=";")
+print(head(metabolome_all))
+```
+On travaille avec des données de type
+# Analyse de la BD copals
+
+```{r}
+data(copals_camera)
+dim(copals_camera)
+
+copals = copals_camera[copals_camera$Include==1,-1]
+```
+# Heatmap
+```{r, heatmap}
+heatmap(abs(cor(copals[,-c(1,2)])), sym = T)
+```
+
+# ACP
+```{r}
+resPCA=PCA(copals[,-c(1,2,3)], graph = FALSE)
+fviz_pca_var(resPCA, geom = c("text","arrow"), axes=1:2) + theme_classic()
+fviz_eig(resPCA, addlabels = TRUE)
+```
+
+# Traitement des données
+
+```{r }
+Y <- as.matrix(copals[, -(1:2)])
+X1 <- copals[, 1]
+X2 <- copals[, 2]
+# We remove individuals with class 1155 and 1551 which are isolated
+rm <- which(X1 %in% c("1155","1551"))
+Y <- Y[-rm, ]
+X1 <- X1[-rm]; X1 <- factor(as.character(X1))
+X2 <- X2[-rm]; X2 <- factor(as.character(X2))
+table(X1,X2)
+
+X <- model.matrix(lm(Y ~ X2 + 0))
+p <- ncol(X)
+n=nrow(X)
+q=dim(Y)[2]
+q
+```
+
+```{r}
+Yscaled = scale(Y)
+Y = Yscaled
+
+#on peut faire varier le X-1 (permet d'enlever l'intercept) ?
+residuals = lm(as.matrix(Y)~X-1)$residuals #= Ehat
+#fitting a linear modelwith the design matrix X to all the columns of Y as if they were independent
+
+#Test de type porte manteau
+pvalue = whitening_test(residuals)
+#whitening test is similar to qi2 test for each line (et la somme des lignes reste un test du qi2)
+
+pvalue 
+#H0 : tous les Y sont independants
+# vaut 0 donc on rejette H0 == les colonnes sont dépendantes
+```
+```{r, dependances}
+#il faut blanchir la matrice ! donc estimer le sigma q ^-1/2
+
+# on peut regarder avec d'autres paramètres meme = incrémenter pAR ou qMA
+result = whitening_choice(residuals,c("AR1","nonparam","ARMA"),pAR=1,qMA=1)
+
+result
+
+#discuter de la p-value
+#test H0 : il y a pas de white noise ?
+```
+# EStimation 
+
+```{r}
+
+#on choisit le modèle où la p-value est la plus grande est dont la décision est WHITE NOISE
+#utiliser les mêmes paramètres qu'au dessus ?
+
+square_root_inv_hat_Sigma=whitening(residuals,"nonparam",pAR=1,qMA=0)
+
+Frequencies=variable_selection(Y,X,square_root_inv_hat_Sigma, nb_repli=10,parallel=FALSE)
+
+#on blanchie
+#on vectorise ! on fait un nouveau modele Y (n x q) = X (matrice de chronequer ?) B(p x q) + E
+#puis lasso, puis stability selection
+```
+
+
+```{r}
+colnames(Frequencies) = c('Names_of_X', 'Names_of_Y', 'frequency')
+p <- ggplot(
+data = Frequencies[Frequencies$frequency >= 1, ],
+aes(x = Names_of_X, y = Names_of_Y, color = frequency, fill = frequency )) +
+geom_tile(size = 0.75) +
+#scale_color_gradient2(midpoint = 0.95, mid = "orange") +
+#scale_fill_gradient2(midpoint = 0.95, mid = "orange") +
+theme_bw() +
+theme(axis.text.x = element_text(angle = 90)) +
+ylab("Levels of X") + xlab("Names of Y")
+p
+```
+
