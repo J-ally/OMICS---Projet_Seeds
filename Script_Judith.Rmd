@@ -1,0 +1,411 @@
+---
+title: "Projet_sujet6"
+output: html_document
+date: "2023-02-01"
+---
+
+# Etude de l'influence de la température et du stade d'imbibition sur la capacité germinative des graines
+
+*Etude de l'influence de la* ***température*** *(variable qualitative à 3 modalités : `Low`, `Medium` et `Elevated`) et du* ***stade d'imbibition*** *(variable qualitative à 3 modalités : `DS` (Dry seed), `EI` après 6h d'imbibition (Early imbibition) correspondant à la fin de la prise d'eau, `LI` après 20h d'imbibition (Late imbibition)) sur la* ***capacité germinative*** *des graines à l'aide de données de métabolomique pour des graines ayant subi un vieillissement artificiel de 4 jours (`CD_4d`)*
+
+<p style="border:1px; border-style:solid; border-color:#000000; padding: 1em;">
+
+**Métabolome** : ensemble complet des petites molécules présentes dans une cellule, un organe ou un organisme à un moment donné.
+
+</p>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r include=FALSE}
+library(MultiVarSel)
+library(FactoMineR)
+library(factoextra)
+library(skimr)
+library(corrplot)
+library(tidyverse)
+```
+
+## 1. Récupération des données
+
+### 1.1 Chargement des données
+
+```{r}
+data = read.table('Table_metabolome_CD_all.csv', sep=';', header=TRUE, dec=",")
+dim(data)
+str(data)
+```
+
+### 1.2 Données des graines ayant subi un vieillissement artificiel de 4 jours (`CD_4d`)
+
+```{r}
+levels(factor(data$treatment))
+data_J4 = data[data$treatment=="CD_4d",]
+```
+
+### 1.3 Mise en forme des données
+
+On extrait les matrices de données :
+
+```{r}
+len = length(colnames(data_J4))
+Y <- as.matrix(data_J4[, 8:len])
+X1 <- data_J4$temperature
+X2 <- data_J4$imbibition
+```
+
+```{r}
+X1 <- factor(as.character(X1))
+X2 <- factor(as.character(X2))
+```
+
+(According to the following table, the problem is in fact a simple one-way MANOVA)
+
+```{r}
+table(X1,X2)
+```
+
+Construction de la matrice de design :
+
+```{r}
+X <- model.matrix(lm(Y ~ X1 + X2 + 0))
+p <- ncol(X)
+n=nrow(X)
+p;n
+```
+
+On réduit Y pour se ramener à une variance (égale ? comparable ?) pour rendre les colonnes comparables : Question d'échelle, ils seront tous du même ordre de grandeur. --\> Ne fonctionne pas
+
+```{r}
+
+#Ne fonctionne pas
+q=dim(Y)[2]; q
+Yscaled=scale(Y); Y=Yscaled
+
+```
+
+## 2. Analyse descriptive
+
+### 2.1 Informations générales dur les données
+
+```{r}
+#summary(data)
+skim(data)
+skim(data[c("temperature", "imbibition", "treatment")])
+```
+
+### 2.2 Graphes
+
+#### 2.2.1 Anlayse univariée
+
+Vérifier les 4 **hypothèses du modèle linéaire** pour l'utiliser par la suite :
+
+- Les observations sont distribuées selon une loi Normale $N(0,\sigma^2)$
+
+- La variance des observation est constante (**homoscédasticité**)
+
+- Les variables aléatoires représentant les observations sont **indépendantes**
+
+- La relation entre l'espérance de la variable à expliuer et les variables explicatives est linéaire.
+
+```{r}
+as.data.frame(Y[,8:23]) %>% 
+  select(where(is.numeric)) %>% 
+  pivot_longer(cols = everything()) %>% 
+  ggplot(aes(x = value, fill = name)) +
+  geom_density() +
+  facet_wrap(~ name, nrow=4, ncol=4, scales = "free")
+```
+
+
+#### 2.2.2 Corrplot et heatmap
+
+Attention données `CD_4d` ou totales:
+
+```{r}
+data_J4 %>%
+  select(where(is.numeric)) %>% 
+  cor() %>%
+  corrplot(method = "color", tl.col = 'black', tl.cex=0.1)
+
+data %>%
+  select(where(is.numeric)) %>% 
+  cor() %>%
+  corrplot(method = "color", tl.col = 'black', tl.cex=0.1)
+```
+
+```{r}
+heatmap(abs(cor(data[,8:len])), labRow=c("Métabolome"), labCol=c("Métabolome"), sym=TRUE)
+```
+
+Trop de variables, c'est illisible.
+
+#### 2.2.3 Boxplots
+
+```{r}
+#eval=FALSE
+data_J4 %>% 
+  ggplot(aes(x = imbibition, y = m_Alanine, fill = temperature)) +
+  geom_boxplot() +
+  ggtitle("Métabolome alanine en fonction de l'imbibition sur les données 'CD_4d'") 
+
+data %>% 
+  ggplot(aes(x = imbibition, y = m_Alanine, fill = temperature)) +
+  geom_boxplot() +
+  ggtitle("Métabolome alanine en fonction de l'imbibition sur les données totales") 
+```
+
+```{r}
+data_J4 %>% 
+  ggplot(aes(x = imbibition, y = m_a.Aminoadipate, fill = temperature)) +
+  geom_boxplot() +
+  ggtitle("Métabolome alanine en fonction de l'imbibition sur les données 'CD_4d'") 
+
+data %>% 
+  ggplot(aes(x = imbibition, y = m_a.Aminoadipate, fill = temperature)) +
+  geom_boxplot() +
+  ggtitle("Métabolome alanine en fonction de l'imbibition sur les données totales")
+```
+
+### 2.3 ACP
+
+```{r}
+acp.res=PCA(Y, scale.unit=TRUE, ncp=dim(Y)[2], graph=FALSE)
+
+get_eigenvalue(acp.res)
+fviz_eig(acp.res, addlabels = TRUE)
+fviz_pca_var(acp.res)
+fviz_pca_ind(acp.res, geom.ind="point", col.ind=X2)
+fviz_pca_ind(acp.res, axes=1:2)
+```
+
+## 3. Analyse des données de métabolomique pour des graines ayant subi un vieillissement artificiel de 4 jours (`CD_4d`)
+
+Nous sommes dans le cas où le modèle linéaire est défini ainsi : $$Y=XB+E$$ où:
+
+-   $Y=(Y_{ij})_{i \in [1,n], j\ in [1,q]}$ matrice de taille $n$x$q$
+
+-   $X$ est la matrice de design de taille $n$x$p$
+
+**Remarque :** \*Que fait-on de la constante
+
+-   $B$ est la matrice de taille $p$x$q$ qui contient les paramètres
+
+-   $E$ est une matrice de taille $n$x$q$ telle que :
+
+$~~~~~~~~~~~~~~~$ $\forall i \in [1,n], ~~~ (E_{i,1},...,E_{i,q}) \overset{iid}{\sim} N(0,\sum_q)$
+
+$~~~~~~~$ où $\sum_q$ désigne la matrice de covariance de la i-ème ligne de $E$.
+
+**Notre but :** Estimer $B$ de manière parcimonieuse.
+
+### 3.1 Etape 1: Est ce que les colonnes de Y sont indépendantes ?
+
+#### 3.1.1 Estimation des $Ê_i$
+
+```{r}
+residuals=lm(as.matrix(Y)~X-1)$residuals
+```
+
+On fait le test PorteManteau:
+
+```{r}
+pvalue=whitening_test(residuals)
+pvalue
+```
+
+On devrait obtenir une petite p-value. $Ê_i$ bruit blanc ($H_0$) ou non($H_1$). p_value petite on rejette $H_0$ (avec force) les colonnes ne sont donc pas indépendantes.
+
+**TRAITER DANS LES DEUX CAS COMME SI ON REJETTAIT ET COMME SI ON ACCEPTAIT**
+
+Regarder les métabolites correspondantes
+
+### 3.2 Etape 2 : Supposons que les colonnes de Y sont indépendantes
+
+Pas besoin de blanchir les données : estimation de B et selection de variables
+
+#### 3.2.1 estimation de B et selection de variables
+
+### 3.3 Etape 2 : Supposons que les colonnes de Y ne sont pas indépendantes
+
+Dans ce cas ci nous réécrivons le modèle de la forme suivante : $$Y\Sigma^{-1/2}_q = XB\Sigma^{-1/2}_q + E\Sigma^{-1/2}_q$$ On veut alors estimer la matrice $\hat{\Sigma}^{-1/2}_q$ de taille $q$x$q$. Pour cela nous comparons plusieurs modèles `AR1`, `ARMA`, et `non paramétrique`.
+
+#### 3.3.1 Choix de la meilleure méthode d'estimation de $\Sigma^{-1/2}_q$
+
+```{r}
+result=whitening_choice(residuals,c("AR1","nonparam","ARMA"),pAR=1,qMA=1)
+result
+
+```
+
+`pAR` : In the case where `typeDep="ARMA"` it corresponds to the parameter **p** of the **ARMA(p,q)** modelling.
+
+`qMA` : In the case where `typeDep="ARMA"` it corresponds to the parameter **q** of the **ARMA(p,q)** modelling.
+
+Pour chacun des modèles on a une p_value très haute : on peut donc choisir n'importe lequel des trois modèles.Nous allons donc nous intéresser par la suite à chacun de ces trois modèles.
+
+(ARMA peut parfois permettre interprétations)
+
+#### 3.3.2 Blanchiment, estimation de B et selection de variables
+
+- **Non paramétrique :**
+
+Calculs :
+
+```{r eval=FALSE}
+#Stockage du Sigma^{-1/2}
+np_square_root_inv_hat_Sigma=whitening(residuals,"nonparam")   #,pAR=1,qMA=0)
+
+Freq_np=variable_selection(Y,X,np_square_root_inv_hat_Sigma,nb_repli=5000,parallel=FALSE)
+
+print("Variable selection  : OK")
+head(Freq_np)
+```
+
+Graphes :
+
+```{r}
+colnames(Freq_np)<-c('Names_of_Y','Names_of_X','frequency')
+head(Freq_np)
+```
+
+```{r}
+# Here we can consider the names of Y as numerical since they correspond
+# to the ratio m/z of the metabolites.
+#Freq_np$Names_of_X<-sub('X2','',Freq_np$Names_of_X)
+#Freq_np$Names_of_Y<-as.numeric(gsub('X','',gsub('\\.1$','',Freq_np$Names_of_Y)))
+
+p<-ggplot(data=Freq_np[Freq_np$frequency>=0.95,],
+          aes(x=Names_of_Y,y=Names_of_X,fill=frequency))+
+  geom_tile(size=0.75)+scale_color_gradient2(midpoint=0.95,mid ='orange')+ theme(axis.text.x = element_text(angle = 90, size=5))+ylab('Levels of X')+xlab('m/z')
+p
+
+#To avoid false postive we only consider the variables that are always selected (with a frequency equal to one)
+
+p<-ggplot(data=Freq_np[Freq_np$frequency==1,],
+          aes(x=Names_of_Y,y=Names_of_X,color=Names_of_X))+
+  geom_point(size=1)+theme(axis.text.x = element_text(angle = 90, size=5))+ylab('Levels of X')+xlab('m/z')
+p
+```
+
+
+- **ARMA :**
+
+Calculs :
+
+```{r}
+arma_square_root_inv_hat_Sigma=whitening(residuals,"ARMA", pAR=1,qMA=1)   #,pAR=1,qMA=0)
+
+Freq_arma=variable_selection(Y,X,arma_square_root_inv_hat_Sigma,nb_repli=5000,parallel=FALSE)
+```
+
+Graphes :
+
+```{r}
+colnames(Freq_arma)<-c('Names_of_Y','Names_of_X','frequency')
+head(Freq_arma)
+```
+
+```{r}
+# Here we can consider the names of Y as numerical since they correspond
+# to the ratio m/z of the metabolites.
+
+p<-ggplot(data=Freq_arma[Freq_arma$frequency>=0.95,],
+          aes(x=Names_of_Y,y=Names_of_X,fill=frequency))+
+  geom_tile(size=0.75)+scale_color_gradient2(midpoint=0.95,mid ='orange')+ theme(axis.text.x = element_text(angle = 90, size=5))+ylab('Levels of X')+xlab('m/z')
+p
+
+#To avoid false postive we only consider the variables that are always selected (with a frequency equal to one)
+
+p<-ggplot(data=Freq_arma[Freq_arma$frequency==1,],
+          aes(x=Names_of_Y,y=Names_of_X,color=Names_of_X))+
+  geom_point(size=1)+theme(axis.text.x = element_text(angle = 90, size=5))+ylab('Levels of X')+xlab('m/z')
+p
+```
+
+- **AR1 :**
+
+Calculs :
+
+```{r}
+ar_square_root_inv_hat_Sigma=whitening(residuals,"AR1")   #,pAR=1,qMA=0)
+
+Freq_ar=variable_selection(Y,X,ar_square_root_inv_hat_Sigma,nb_repli=5000,parallel=FALSE)
+```
+
+Graphes :
+
+```{r}
+colnames(Freq_ar)<-c('Names_of_Y','Names_of_X','frequency')
+head(Freq_ar)
+```
+
+```{r}
+# Here we can consider the names of Y as numerical since they correspond
+# to the ratio m/z of the metabolites.
+
+p<-ggplot(data=Freq_ar[Freq_ar$frequency>=0.95,],
+          aes(x=Names_of_Y,y=Names_of_X,fill=frequency))+
+  geom_tile(size=0.75)+scale_color_gradient2(midpoint=0.95,mid ='orange')+ theme(axis.text.x = element_text(angle = 90, size=5))+ylab('Levels of X')+xlab('m/z')
+p
+
+#To avoid false postive we only consider the variables that are always selected (with a frequency equal to one)
+
+p<-ggplot(data=Freq_ar[Freq_ar$frequency==1,],
+          aes(x=Names_of_Y,y=Names_of_X,color=Names_of_X))+
+  geom_point(size=1)+theme(axis.text.x = element_text(angle = 90, size=5))+ylab('Levels of X')+xlab('m/z')
+p
+```
+
+#### 3.3.3 Choix des variables
+
+```{r}
+ordered_np = Freq_np[order(Freq_np$frequency,decreasing=T),]
+
+ordered_arma = Freq_arma[order(Freq_arma$frequency,decreasing=T),]
+
+ordered_ar = Freq_ar[order(Freq_ar$frequency,decreasing=T),]
+
+ordered = data.frame('fNP'=ordered_np$frequency, 
+                       'fARMA'=ordered_arma$frequency, 
+                       'fAR'=ordered_ar$frequency)
+
+ordered$index = c(1:length(ordered_np$frequency))
+```
+
+```{r}
+df <- gather(ordered, key = "model", value = "value", 
+c("fNP", "fARMA", "fAR"))
+ggplot(df, aes(x=index, y = value, colour =model)) + 
+geom_line()
+```
+
+
+On choisit les varaibles présentes dans les différents modèles.
+```{r}
+seuil = 0.999
+  
+res.NP = subset(Freq_np, Freq_np$frequency >= seuil)
+res.ARMA = subset(Freq_arma, Freq_arma$frequency >= seuil)
+res.AR = subset(Freq_ar, Freq_ar$frequency >= seuil)
+
+metabolites = res.NP[which((res.NP$Names_of_Y %in% res.ARMA$Names_of_Y) & (res.NP$Names_of_Y %in% res.AR$Names_of_Y)),]
+dim(metabolites)
+metabolites
+```
+
+Graphes :
+
+```{r}
+p<-ggplot(data=metabolites,
+          aes(x=Names_of_Y,y=Names_of_X,fill=frequency))+
+  geom_tile(size=0.75)+scale_color_gradient2(midpoint=0.95,mid ='orange')+ theme(axis.text.x = element_text(angle = 90, size=5))+ylab('Levels of X')+xlab('m/z')
+p
+
+p<-ggplot(data=metabolites,
+          aes(x=Names_of_Y,y=Names_of_X,color=Names_of_X))+
+  geom_point(size=1)+theme(axis.text.x = element_text(angle = 90, size=5))+ylab('Levels of X')+xlab('m/z')
+p
+```
+
