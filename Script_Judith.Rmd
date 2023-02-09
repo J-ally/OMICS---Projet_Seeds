@@ -1,6 +1,8 @@
 ---
 title: "Projet_sujet6"
-output: html_document
+output:
+  html_document: default
+  pdf_document: default
 date: "2023-02-01"
 ---
 
@@ -28,6 +30,11 @@ library(tidyverse)
 ## 1. Récupération des données
 
 ### 1.1 Chargement des données
+
+```{r}
+SEUIL=0.998
+```
+
 
 ```{r}
 data = read.table('Table_metabolome_CD_all.csv', sep=';', header=TRUE, dec=",")
@@ -256,7 +263,7 @@ ylab("Levels of X") + xlab("Names of Y")
 p
 
 
-p<-ggplot(data=Frequencies[Frequencies$frequency>=0.99,],
+p<-ggplot(data=Frequencies[Frequencies$frequency>=SEUIL,],
           aes(x=Names_of_Y,y=Names_of_X,color=Names_of_X))+
   geom_point(size=1)+theme(axis.text.x = element_text(angle = 90, size=5))+ylab('Levels of X')+xlab('m/z')
 p
@@ -266,11 +273,13 @@ p
 ordered_no_whitening = Frequencies[order(Frequencies$frequency,decreasing=T),]
 ordered_no_whitening$index = c(1:length(ordered_no_whitening$frequency))
 
-ggplot(ordered_no_whitening, aes(x=index, y = frequency)) + 
-geom_line()
+ggplot(ordered_no_whitening, aes(x=index)) + 
+  geom_line( aes(y = frequency)) +
+  geom_line( aes(y = rep(SEUIL, length(frequency))), color="steelblue")
+
 ```
 ```{r}
-res.no_whitening = subset(Frequencies, frequency>=0.99)
+res.no_whitening = subset(Frequencies, frequency>=SEUIL)
 ```
 
 ### 3.3 Etape 2 : Supposons que les colonnes de Y ne sont pas indépendantes
@@ -340,7 +349,7 @@ p
 
 #To avoid false postive we only consider the variables that are always selected (with a frequency equal to one)
 
-p<-ggplot(data=Freq_np[Freq_np$frequency>=0.99,],
+p<-ggplot(data=Freq_np[Freq_np$frequency>=SEUIL,],
           aes(x=Names_of_Y,y=Names_of_X,color=Names_of_X))+
   geom_point(size=1)+theme(axis.text.x = element_text(angle = 90, size=5))+ylab('Levels of X')+xlab('m/z')
 p
@@ -387,7 +396,7 @@ p
 
 #To avoid false postive we only consider the variables that are always selected (with a frequency equal to one)
 
-p<-ggplot(data=Freq_arma[Freq_arma$frequency>=0.99,],
+p<-ggplot(data=Freq_arma[Freq_arma$frequency>=SEUIL,],
           aes(x=Names_of_Y,y=Names_of_X,color=Names_of_X))+
   geom_point(size=1)+theme(axis.text.x = element_text(angle = 90, size=5))+ylab('Levels of X')+xlab('m/z')
 p
@@ -433,7 +442,7 @@ p
 
 #To avoid false postive we only consider the variables that are always selected (with a frequency equal to one)
 
-p<-ggplot(data=Freq_ar[Freq_ar$frequency>=0.99,],
+p<-ggplot(data=Freq_ar[Freq_ar$frequency>=SEUIL,],
           aes(x=Names_of_Y,y=Names_of_X,color=Names_of_X))+
   geom_point(size=1)+theme(axis.text.x = element_text(angle = 90, size=5))+ylab('Levels of X')+xlab('m/z')
 p
@@ -451,13 +460,14 @@ ordered_ar = Freq_ar[order(Freq_ar$frequency,decreasing=T),]
 ordered = data.frame('fNP'=ordered_np$frequency, 
                        'fARMA'=ordered_arma$frequency, 
                        'fAR'=ordered_ar$frequency)
+ordered$seuil = rep(SEUIL, length(ordered_np$frequency))
 
 ordered$index = c(1:length(ordered_np$frequency))
 ```
 
 ```{r}
 df <- gather(ordered, key = "model", value = "value", 
-c("fNP", "fARMA", "fAR"))
+c("fNP", "fARMA", "fAR", "seuil"))
 ggplot(df, aes(x=index, y = value, colour =model)) + 
 geom_line()
 ```
@@ -465,11 +475,10 @@ geom_line()
 
 On choisit les varaibles présentes dans les différents modèles.
 ```{r}
-seuil = 0.99
-  
-res.NP = subset(Freq_np, Freq_np$frequency >= seuil)
-res.ARMA = subset(Freq_arma, Freq_arma$frequency >= seuil)
-res.AR = subset(Freq_ar, Freq_ar$frequency >= seuil)
+
+res.NP = subset(Freq_np, Freq_np$frequency >= SEUIL)
+res.ARMA = subset(Freq_arma, Freq_arma$frequency >= SEUIL)
+res.AR = subset(Freq_ar, Freq_ar$frequency >= SEUIL)
 
 metabolites = res.NP[which((res.NP$Names_of_Y %in% res.ARMA$Names_of_Y) & (res.NP$Names_of_Y %in% res.AR$Names_of_Y)),]
 dim(metabolites)
