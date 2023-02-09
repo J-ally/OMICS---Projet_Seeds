@@ -9,9 +9,7 @@ date: "2023-02-01"
 *Etude de l'influence de la* ***température*** *(variable qualitative à 3 modalités : `Low`, `Medium` et `Elevated`) et du* ***stade d'imbibition*** *(variable qualitative à 3 modalités : `DS` (Dry seed), `EI` après 6h d'imbibition (Early imbibition) correspondant à la fin de la prise d'eau, `LI` après 20h d'imbibition (Late imbibition)) sur la* ***capacité germinative*** *des graines à l'aide de données de métabolomique pour des graines ayant subi un vieillissement artificiel de 4 jours (`CD_4d`)*
 
 <p style="border:1px; border-style:solid; border-color:#000000; padding: 1em;">
-
 **Métabolome** : ensemble complet des petites molécules présentes dans une cellule, un organe ou un organisme à un moment donné.
-
 </p>
 
 ```{r setup, include=FALSE}
@@ -34,7 +32,8 @@ library(tidyverse)
 ```{r}
 data = read.table('Table_metabolome_CD_all.csv', sep=';', header=TRUE, dec=",")
 dim(data)
-str(data)
+#str(data)
+head(data[,1:13])
 ```
 
 ### 1.2 Données des graines ayant subi un vieillissement artificiel de 4 jours (`CD_4d`)
@@ -58,11 +57,7 @@ X2 <- data_J4$imbibition
 ```{r}
 X1 <- factor(as.character(X1))
 X2 <- factor(as.character(X2))
-```
 
-(According to the following table, the problem is in fact a simple one-way MANOVA)
-
-```{r}
 table(X1,X2)
 ```
 
@@ -78,11 +73,11 @@ p;n
 On réduit Y pour se ramener à une variance (égale ? comparable ?) pour rendre les colonnes comparables : Question d'échelle, ils seront tous du même ordre de grandeur. --\> Ne fonctionne pas
 
 ```{r}
-
+'
 #Ne fonctionne pas
 q=dim(Y)[2]; q
 Yscaled=scale(Y); Y=Yscaled
-
+'
 ```
 
 ## 2. Analyse descriptive
@@ -91,8 +86,8 @@ Yscaled=scale(Y); Y=Yscaled
 
 ```{r}
 #summary(data)
-skim(data)
-skim(data[c("temperature", "imbibition", "treatment")])
+skim(data[,1:13])
+#skim(data[c("temperature", "imbibition", "treatment")])
 ```
 
 ### 2.2 Graphes
@@ -117,7 +112,6 @@ as.data.frame(Y[,8:23]) %>%
   geom_density() +
   facet_wrap(~ name, nrow=4, ncol=4, scales = "free")
 ```
-
 
 #### 2.2.2 Corrplot et heatmap
 
@@ -177,6 +171,7 @@ get_eigenvalue(acp.res)
 fviz_eig(acp.res, addlabels = TRUE)
 fviz_pca_var(acp.res)
 fviz_pca_ind(acp.res, geom.ind="point", col.ind=X2)
+fviz_pca_ind(acp.res, geom.ind="point", col.ind=X1)
 fviz_pca_ind(acp.res, axes=1:2)
 ```
 
@@ -227,6 +222,57 @@ Pas besoin de blanchir les données : estimation de B et selection de variables
 
 #### 3.2.1 estimation de B et selection de variables
 
+Calculs :
+
+```{r eval=FALSE}
+id_matrix=whitening(residuals,"no_whitening")
+Frequencies=variable_selection(Y,X,id_matrix,nb_repli=50000,parallel=FALSE)
+```
+
+```{r}
+#save(Frequencies, file ='freq_no_whitening.RData')
+load('freq_no_whitening.RData')
+```
+
+Graphes :
+
+```{r}
+colnames(Frequencies)<-c('Names_of_Y','Names_of_X','frequency')
+head(Frequencies)
+```
+
+```{r}
+
+p <- ggplot(
+data = Frequencies[Frequencies$frequency >= 0.97, ],
+        aes(x = Names_of_Y, y = Names_of_X,
+        color = frequency, fill = frequency )) +
+geom_tile(size = 0.75) +
+scale_color_gradient2(midpoint = 0.97, mid = "orange") +
+scale_fill_gradient2(midpoint = 0.97, mid = "orange") +
+theme_bw() +
+theme(axis.text.x = element_text(angle = 90, size=5)) +
+ylab("Levels of X") + xlab("Names of Y")
+p
+
+
+p<-ggplot(data=Frequencies[Frequencies$frequency>=0.99,],
+          aes(x=Names_of_Y,y=Names_of_X,color=Names_of_X))+
+  geom_point(size=1)+theme(axis.text.x = element_text(angle = 90, size=5))+ylab('Levels of X')+xlab('m/z')
+p
+```
+
+```{r}
+ordered_no_whitening = Frequencies[order(Frequencies$frequency,decreasing=T),]
+ordered_no_whitening$index = c(1:length(ordered_no_whitening$frequency))
+
+ggplot(ordered_no_whitening, aes(x=index, y = frequency)) + 
+geom_line()
+```
+```{r}
+res.no_whitening = subset(Frequencies, frequency>=0.99)
+```
+
 ### 3.3 Etape 2 : Supposons que les colonnes de Y ne sont pas indépendantes
 
 Dans ce cas ci nous réécrivons le modèle de la forme suivante : $$Y\Sigma^{-1/2}_q = XB\Sigma^{-1/2}_q + E\Sigma^{-1/2}_q$$ On veut alors estimer la matrice $\hat{\Sigma}^{-1/2}_q$ de taille $q$x$q$. Pour cela nous comparons plusieurs modèles `AR1`, `ARMA`, et `non paramétrique`.
@@ -236,7 +282,6 @@ Dans ce cas ci nous réécrivons le modèle de la forme suivante : $$Y\Sigma^{-1
 ```{r}
 result=whitening_choice(residuals,c("AR1","nonparam","ARMA"),pAR=1,qMA=1)
 result
-
 ```
 
 `pAR` : In the case where `typeDep="ARMA"` it corresponds to the parameter **p** of the **ARMA(p,q)** modelling.
@@ -257,11 +302,17 @@ Calculs :
 #Stockage du Sigma^{-1/2}
 np_square_root_inv_hat_Sigma=whitening(residuals,"nonparam")   #,pAR=1,qMA=0)
 
-Freq_np=variable_selection(Y,X,np_square_root_inv_hat_Sigma,nb_repli=5000,parallel=FALSE)
+Freq_np=variable_selection(Y,X,np_square_root_inv_hat_Sigma,nb_repli=10000,parallel=FALSE)
 
 print("Variable selection  : OK")
 head(Freq_np)
 ```
+
+```{r}
+#save(Freq_np, file ='freq_np.RData')
+load('freq_np.RData')
+```
+
 
 Graphes :
 
@@ -276,14 +327,20 @@ head(Freq_np)
 #Freq_np$Names_of_X<-sub('X2','',Freq_np$Names_of_X)
 #Freq_np$Names_of_Y<-as.numeric(gsub('X','',gsub('\\.1$','',Freq_np$Names_of_Y)))
 
-p<-ggplot(data=Freq_np[Freq_np$frequency>=0.95,],
-          aes(x=Names_of_Y,y=Names_of_X,fill=frequency))+
-  geom_tile(size=0.75)+scale_color_gradient2(midpoint=0.95,mid ='orange')+ theme(axis.text.x = element_text(angle = 90, size=5))+ylab('Levels of X')+xlab('m/z')
+p<-ggplot(data=Freq_np[Freq_np$frequency>=0.97,],
+        aes(x = Names_of_Y, y = Names_of_X,
+        color = frequency, fill = frequency )) +
+geom_tile(size = 0.75) +
+scale_color_gradient2(midpoint = 0.97, mid = "orange") +
+scale_fill_gradient2(midpoint = 0.97, mid = "orange") +
+theme_bw() +
+theme(axis.text.x = element_text(angle = 90, size=5)) +
+ylab("Levels of X") + xlab("Names of Y")
 p
 
 #To avoid false postive we only consider the variables that are always selected (with a frequency equal to one)
 
-p<-ggplot(data=Freq_np[Freq_np$frequency==1,],
+p<-ggplot(data=Freq_np[Freq_np$frequency>=0.99,],
           aes(x=Names_of_Y,y=Names_of_X,color=Names_of_X))+
   geom_point(size=1)+theme(axis.text.x = element_text(angle = 90, size=5))+ylab('Levels of X')+xlab('m/z')
 p
@@ -294,11 +351,17 @@ p
 
 Calculs :
 
-```{r}
+```{r eval=FALSE}
 arma_square_root_inv_hat_Sigma=whitening(residuals,"ARMA", pAR=1,qMA=1)   #,pAR=1,qMA=0)
 
-Freq_arma=variable_selection(Y,X,arma_square_root_inv_hat_Sigma,nb_repli=5000,parallel=FALSE)
+Freq_arma=variable_selection(Y,X,arma_square_root_inv_hat_Sigma,nb_repli=10000,parallel=FALSE)
 ```
+
+```{r}
+#save(Freq_arma, file ='freq_arma.RData')
+load('freq_arma.RData')
+```
+
 
 Graphes :
 
@@ -311,14 +374,20 @@ head(Freq_arma)
 # Here we can consider the names of Y as numerical since they correspond
 # to the ratio m/z of the metabolites.
 
-p<-ggplot(data=Freq_arma[Freq_arma$frequency>=0.95,],
-          aes(x=Names_of_Y,y=Names_of_X,fill=frequency))+
-  geom_tile(size=0.75)+scale_color_gradient2(midpoint=0.95,mid ='orange')+ theme(axis.text.x = element_text(angle = 90, size=5))+ylab('Levels of X')+xlab('m/z')
+p<-ggplot(data=Freq_arma[Freq_arma$frequency>=0.97,],
+        aes(x = Names_of_Y, y = Names_of_X,
+        color = frequency, fill = frequency )) +
+geom_tile(size = 0.75) +
+scale_color_gradient2(midpoint = 0.97, mid = "orange") +
+scale_fill_gradient2(midpoint = 0.97, mid = "orange") +
+theme_bw() +
+theme(axis.text.x = element_text(angle = 90, size=5)) +
+ylab("Levels of X") + xlab("Names of Y")
 p
 
 #To avoid false postive we only consider the variables that are always selected (with a frequency equal to one)
 
-p<-ggplot(data=Freq_arma[Freq_arma$frequency==1,],
+p<-ggplot(data=Freq_arma[Freq_arma$frequency>=0.99,],
           aes(x=Names_of_Y,y=Names_of_X,color=Names_of_X))+
   geom_point(size=1)+theme(axis.text.x = element_text(angle = 90, size=5))+ylab('Levels of X')+xlab('m/z')
 p
@@ -328,11 +397,17 @@ p
 
 Calculs :
 
-```{r}
+```{r eval=FALSE}
 ar_square_root_inv_hat_Sigma=whitening(residuals,"AR1")   #,pAR=1,qMA=0)
 
-Freq_ar=variable_selection(Y,X,ar_square_root_inv_hat_Sigma,nb_repli=5000,parallel=FALSE)
+Freq_ar=variable_selection(Y,X,ar_square_root_inv_hat_Sigma,nb_repli=10000,parallel=FALSE)
 ```
+
+```{r}
+#save(Freq_ar, file ='freq_ar.RData')
+load('freq_ar.RData')
+```
+
 
 Graphes :
 
@@ -345,14 +420,20 @@ head(Freq_ar)
 # Here we can consider the names of Y as numerical since they correspond
 # to the ratio m/z of the metabolites.
 
-p<-ggplot(data=Freq_ar[Freq_ar$frequency>=0.95,],
-          aes(x=Names_of_Y,y=Names_of_X,fill=frequency))+
-  geom_tile(size=0.75)+scale_color_gradient2(midpoint=0.95,mid ='orange')+ theme(axis.text.x = element_text(angle = 90, size=5))+ylab('Levels of X')+xlab('m/z')
+p<-ggplot(data=Freq_ar[Freq_ar$frequency>=0.97,],
+        aes(x = Names_of_Y, y = Names_of_X,
+        color = frequency, fill = frequency )) +
+geom_tile(size = 0.75) +
+scale_color_gradient2(midpoint = 0.97, mid = "orange") +
+scale_fill_gradient2(midpoint = 0.97, mid = "orange") +
+theme_bw() +
+theme(axis.text.x = element_text(angle = 90, size=5)) +
+ylab("Levels of X") + xlab("Names of Y")
 p
 
 #To avoid false postive we only consider the variables that are always selected (with a frequency equal to one)
 
-p<-ggplot(data=Freq_ar[Freq_ar$frequency==1,],
+p<-ggplot(data=Freq_ar[Freq_ar$frequency>=0.99,],
           aes(x=Names_of_Y,y=Names_of_X,color=Names_of_X))+
   geom_point(size=1)+theme(axis.text.x = element_text(angle = 90, size=5))+ylab('Levels of X')+xlab('m/z')
 p
@@ -384,7 +465,7 @@ geom_line()
 
 On choisit les varaibles présentes dans les différents modèles.
 ```{r}
-seuil = 0.999
+seuil = 0.99
   
 res.NP = subset(Freq_np, Freq_np$frequency >= seuil)
 res.ARMA = subset(Freq_arma, Freq_arma$frequency >= seuil)
@@ -399,8 +480,14 @@ Graphes :
 
 ```{r}
 p<-ggplot(data=metabolites,
-          aes(x=Names_of_Y,y=Names_of_X,fill=frequency))+
-  geom_tile(size=0.75)+scale_color_gradient2(midpoint=0.95,mid ='orange')+ theme(axis.text.x = element_text(angle = 90, size=5))+ylab('Levels of X')+xlab('m/z')
+        aes(x = Names_of_Y, y = Names_of_X,
+        color = frequency, fill = frequency )) +
+geom_tile(size = 0.75) +
+scale_color_gradient2(midpoint = 0.99, mid = "orange") +
+scale_fill_gradient2(midpoint = 0.99, mid = "orange") +
+theme_bw() +
+theme(axis.text.x = element_text(angle = 90, size=5)) +
+ylab("Levels of X") + xlab("Names of Y")
 p
 
 p<-ggplot(data=metabolites,
@@ -408,4 +495,12 @@ p<-ggplot(data=metabolites,
   geom_point(size=1)+theme(axis.text.x = element_text(angle = 90, size=5))+ylab('Levels of X')+xlab('m/z')
 p
 ```
+
+```{r}
+final_meta = levels(factor(res.no_whitening[which(res.no_whitening$Names_of_Y %in%  metabolites$Names_of_Y), 1]))
+
+length(final_meta)
+final_meta
+```
+
 
