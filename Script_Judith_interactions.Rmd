@@ -72,10 +72,12 @@ table(X1,X2)
 Construction de la matrice de design :
 
 ```{r}
-X <- model.matrix(lm(Y ~ X1 + X2 + 0))
+X <- model.matrix(lm(Y ~ X1 * X2 + 0))
 p <- ncol(X)
 n=nrow(X)
 p;n
+
+X_df = data.frame(X)
 ```
 
 On réduit Y pour se ramener à une variance (égale ? comparable ?) pour rendre les colonnes comparables : Question d'échelle, ils seront tous du même ordre de grandeur. --\> Ne fonctionne pas
