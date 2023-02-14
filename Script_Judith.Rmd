@@ -11,7 +11,9 @@ date: "2023-02-01"
 *Etude de l'influence de la* ***température*** *(variable qualitative à 3 modalités : `Low`, `Medium` et `Elevated`) et du* ***stade d'imbibition*** *(variable qualitative à 3 modalités : `DS` (Dry seed), `EI` après 6h d'imbibition (Early imbibition) correspondant à la fin de la prise d'eau, `LI` après 20h d'imbibition (Late imbibition)) sur la* ***capacité germinative*** *des graines à l'aide de données de métabolomique pour des graines ayant subi un vieillissement artificiel de 4 jours (`CD_4d`)*
 
 <p style="border:1px; border-style:solid; border-color:#000000; padding: 1em;">
+
 **Métabolome** : ensemble complet des petites molécules présentes dans une cellule, un organe ou un organisme à un moment donné.
+
 </p>
 
 ```{r setup, include=FALSE}
@@ -34,7 +36,6 @@ library(tidyverse)
 ```{r}
 SEUIL=0.998
 ```
-
 
 ```{r}
 data = read.table('Table_metabolome_CD_all.csv', sep=';', header=TRUE, dec=",")
@@ -103,13 +104,13 @@ skim(data[,1:13])
 
 Vérifier les 4 **hypothèses du modèle linéaire** pour l'utiliser par la suite :
 
-- Les observations sont distribuées selon une loi Normale $N(0,\sigma^2)$
+-   Les observations sont distribuées selon une loi Normale $N(0,\sigma^2)$
 
-- La variance des observation est constante (**homoscédasticité**)
+-   La variance des observation est constante (**homoscédasticité**)
 
-- Les variables aléatoires représentant les observations sont **indépendantes**
+-   Les variables aléatoires représentant les observations sont **indépendantes**
 
-- La relation entre l'espérance de la variable à expliuer et les variables explicatives est linéaire.
+-   La relation entre l'espérance de la variable à expliuer et les variables explicatives est linéaire.
 
 ```{r}
 as.data.frame(Y[,8:23]) %>% 
@@ -207,6 +208,7 @@ $~~~~~~~$ où $\sum_q$ désigne la matrice de covariance de la i-ème ligne de $
 #### 3.1.1 Estimation des $Ê_i$
 
 ```{r}
+model = lm(as.matrix(Y)~X-1)
 residuals=lm(as.matrix(Y)~X-1)$residuals
 ```
 
@@ -233,11 +235,11 @@ Calculs :
 
 ```{r eval=FALSE}
 id_matrix=whitening(residuals,"no_whitening")
-Frequencies=variable_selection(Y,X,id_matrix,nb_repli=50000,parallel=FALSE)
+Frequencies=variable_selection(Y,X,id_matrix,nb_repli=5000,parallel=FALSE)
 ```
 
 ```{r}
-#save(Frequencies, file ='freq_no_whitening.RData')
+save(Frequencies, file ='freq_no_whitening.RData')
 load('freq_no_whitening.RData')
 ```
 
@@ -278,6 +280,7 @@ ggplot(ordered_no_whitening, aes(x=index)) +
   geom_line( aes(y = rep(SEUIL, length(frequency))), color="steelblue")
 
 ```
+
 ```{r}
 res.no_whitening = subset(Frequencies, frequency>=SEUIL)
 ```
@@ -303,7 +306,7 @@ Pour chacun des modèles on a une p_value très haute : on peut donc choisir n'i
 
 #### 3.3.2 Blanchiment, estimation de B et selection de variables
 
-- **Non paramétrique :**
+-   **Non paramétrique :**
 
 Calculs :
 
@@ -311,7 +314,7 @@ Calculs :
 #Stockage du Sigma^{-1/2}
 np_square_root_inv_hat_Sigma=whitening(residuals,"nonparam")   #,pAR=1,qMA=0)
 
-Freq_np=variable_selection(Y,X,np_square_root_inv_hat_Sigma,nb_repli=10000,parallel=FALSE)
+Freq_np=variable_selection(Y,X,np_square_root_inv_hat_Sigma,nb_repli=1000,parallel=FALSE)
 
 print("Variable selection  : OK")
 head(Freq_np)
@@ -321,7 +324,6 @@ head(Freq_np)
 #save(Freq_np, file ='freq_np.RData')
 load('freq_np.RData')
 ```
-
 
 Graphes :
 
@@ -355,22 +357,20 @@ p<-ggplot(data=Freq_np[Freq_np$frequency>=SEUIL,],
 p
 ```
 
-
-- **ARMA :**
+-   **ARMA :**
 
 Calculs :
 
 ```{r eval=FALSE}
 arma_square_root_inv_hat_Sigma=whitening(residuals,"ARMA", pAR=1,qMA=1)   #,pAR=1,qMA=0)
 
-Freq_arma=variable_selection(Y,X,arma_square_root_inv_hat_Sigma,nb_repli=10000,parallel=FALSE)
+Freq_arma=variable_selection(Y,X,arma_square_root_inv_hat_Sigma,nb_repli=1000,parallel=FALSE)
 ```
 
 ```{r}
-#save(Freq_arma, file ='freq_arma.RData')
+save(Freq_arma, file ='freq_arma.RData')
 load('freq_arma.RData')
 ```
-
 
 Graphes :
 
@@ -402,21 +402,20 @@ p<-ggplot(data=Freq_arma[Freq_arma$frequency>=SEUIL,],
 p
 ```
 
-- **AR1 :**
+-   **AR1 :**
 
 Calculs :
 
 ```{r eval=FALSE}
 ar_square_root_inv_hat_Sigma=whitening(residuals,"AR1")   #,pAR=1,qMA=0)
 
-Freq_ar=variable_selection(Y,X,ar_square_root_inv_hat_Sigma,nb_repli=10000,parallel=FALSE)
+Freq_ar=variable_selection(Y,X,ar_square_root_inv_hat_Sigma,nb_repli=1000,parallel=FALSE)
 ```
 
 ```{r}
-#save(Freq_ar, file ='freq_ar.RData')
+save(Freq_ar, file ='freq_ar.RData')
 load('freq_ar.RData')
 ```
-
 
 Graphes :
 
@@ -472,9 +471,11 @@ ggplot(df, aes(x=index, y = value, colour =model)) +
 geom_line()
 ```
 
-
 On choisit les varaibles présentes dans les différents modèles.
+
 ```{r}
+
+SEUIL = 0.999
 
 res.NP = subset(Freq_np, Freq_np$frequency >= SEUIL)
 res.ARMA = subset(Freq_arma, Freq_arma$frequency >= SEUIL)
@@ -506,10 +507,33 @@ p
 ```
 
 ```{r}
-final_meta = levels(factor(res.no_whitening[which(res.no_whitening$Names_of_Y %in%  metabolites$Names_of_Y), 1]))
+#avec metabolite (125) + non blanchiement
+final_meta = levels(factor(res.no_whitening[which(res.no_whitening$Names_of_Y %in% metabolites$Names_of_Y), 1]))
 
 length(final_meta)
 final_meta
 ```
 
+# Calcul des beta chapeaux (appelé coefs)
 
+```{r}
+coef_models = data.frame(model$coeff)
+coefs_selected = coef_models[final_meta]
+
+coefs_selected
+
+final_meta_df = metabolites[which(metabolites$Names_of_Y %in% res.no_whitening$Names_of_Y),]
+
+final_meta_df$coef = c(0*length(final_meta_df$Names_of_Y))
+
+for (i in 1:length(final_meta_df$Names_of_Y)) {
+  final_meta_df[i,"coef"] = coefs_selected[paste("X",final_meta_df[i,"Names_of_X"], sep = ""), final_meta_df[i, "Names_of_Y"]]
+}
+
+#Les coefs plus ou moins elevés sont représentatifs d'un impact d'une modalité de la température (élevé ...) et imbibition sur la présence de ce métabolite
+
+p<-ggplot(data=final_meta_df,
+          aes(x=Names_of_Y,y=Names_of_X,color=coef>0))+
+  geom_point(size=3*log(abs(final_meta_df$coef)))+theme(axis.text.x = element_text(angle = 90, size=7))+ylab('Levels of X')+xlab('m/z')
+p
+```
